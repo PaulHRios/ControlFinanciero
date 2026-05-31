@@ -33,16 +33,15 @@ dependencias externas de JS. Lista para **GitHub Pages**.
 
 ---
 
-## 🔐 Credenciales por defecto
+## 🔐 Credenciales
 
-| | |
-|---|---|
-| Usuario | `paul_casa` |
-| Contraseña | `Cuauhtemoc-2026` |
+El usuario y la contraseña **no aparecen en ningún archivo del repositorio**.
+En el código solo vive un hash SHA-256 (con salt) que combina usuario +
+contraseña; de ahí no se pueden leer ni recuperar. Guarda tus credenciales
+por tu cuenta (fuera del repo).
 
-> ⚠️ **Cambia la contraseña antes de compartir la app.** Abre
-> `generar-hash.html` en el navegador, escribe la nueva contraseña, copia el
-> hash y pégalo en `js/config.js` → `auth.passwordHash`.
+Para cambiarlas, abre `generar-hash.html`, escribe el usuario y la contraseña
+nuevos, copia el hash y pégalo en `js/config.js` → `auth.passwordHash`.
 
 ---
 
