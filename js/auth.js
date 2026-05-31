@@ -2,8 +2,9 @@
 //  AUTENTICACIÓN
 // ----------------------------------------------------------------------------
 //  Doble capa:
-//   1) Frontend: compara el hash SHA-256 de las credenciales con el hash
-//      guardado en config.js (la contraseña nunca viaja ni se guarda en claro).
+//   1) Frontend: combina usuario + contraseña en un hash SHA-256 y lo compara
+//      con el hash guardado en config.js. Ni el usuario ni la contraseña se
+//      guardan en claro ni son recuperables desde el código.
 //   2) Backend (Apps Script): valida el mismo hash en cada request.
 //
 //  La sesión vive en sessionStorage → expira al cerrar el navegador.
@@ -34,7 +35,7 @@ export function renderLogin(onSuccess) {
         <p class="login-sub">${CONFIG.app.subtitle}</p>
         <label class="field">
           <span>${icon("user", 16)} Usuario</span>
-          <input type="text" id="login-user" placeholder="usuario" autocapitalize="none" required />
+          <input type="text" id="login-user" autocapitalize="none" autocomplete="off" required />
         </label>
         <label class="field">
           <span>${icon("lock", 16)} Contraseña</span>
@@ -53,9 +54,11 @@ export function renderLogin(onSuccess) {
     errEl.hidden = true;
     const user = document.getElementById("login-user").value.trim();
     const pass = document.getElementById("login-pass").value;
+    // El usuario va dentro del hash: una credencial incorrecta produce un hash
+    // distinto y se rechaza. No se compara el usuario en claro.
     const hash = await hashCredential(CONFIG.auth.salt, user, pass);
 
-    if (user === CONFIG.auth.username && hash === CONFIG.auth.passwordHash) {
+    if (hash === CONFIG.auth.passwordHash) {
       sessionStorage.setItem(SESSION_KEY, hash);
       onSuccess();
     } else {

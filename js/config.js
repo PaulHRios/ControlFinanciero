@@ -3,10 +3,11 @@
 // ----------------------------------------------------------------------------
 //  Este archivo contiene la configuración pública de la aplicación.
 //
-//  SEGURIDAD: la contraseña NUNCA se guarda en texto plano. Aquí solo vive
-//  un hash SHA-256 (con salt). Para cambiar la contraseña abre
-//  `generar-hash.html` en el navegador, escribe la nueva contraseña y pega
-//  el hash resultante en `auth.passwordHash`.
+//  SEGURIDAD: ni el usuario ni la contraseña se guardan en texto plano. Aquí
+//  solo vive UN hash SHA-256 (con salt) que combina usuario + contraseña, por
+//  lo que ninguno de los dos es legible ni recuperable desde el código.
+//  Para cambiar las credenciales abre `generar-hash.html` en el navegador,
+//  escribe usuario y contraseña y pega el hash resultante en `auth.passwordHash`.
 // ============================================================================
 
 export const CONFIG = {
@@ -17,20 +18,17 @@ export const CONFIG = {
   },
 
   // --- Autenticación -------------------------------------------------------
-  // Un solo par de credenciales para ambos usuarios (Paúl y su mamá).
-  // Credenciales por defecto:  usuario = paul_casa   contraseña = Cuauhtemoc-2026
-  // ⚠️  CAMBIA la contraseña antes del deploy con generar-hash.html
+  // Un solo par de credenciales para ambos usuarios. El hash combina
+  // usuario + contraseña: no hay forma de leer ninguno de los dos aquí.
   auth: {
-    salt: "cc_casa_cuauhtemoc_v1_8f3a",
-    username: "paul_casa",
-    passwordHash:
-      "7c0fd26b326c72a2f261c50f5408ad75072f8f95a6aedf650a5fbbdd5a4bd6e2",
+    salt: "2f1b9c4e7a8d6f3b2c1e0a9d",
+    passwordHash: "1560be2529a8db45aad953e5065c79050e3e239f26cbf5836b46902c2ece588e",
   },
 
   // --- Backend Google Sheets (opcional) -----------------------------------
   // Si se deja vacío, la app funciona con almacenamiento local del navegador
-  // (localStorage). Cuando Paúl configure el Apps Script, pega aquí la URL
-  // del Web App para sincronizar los datos entre Colorado y Cuauhtémoc.
+  // (localStorage). Cuando configures el Apps Script, pega aquí la URL del
+  // Web App para sincronizar los datos entre Colorado y Cuauhtémoc.
   sheets: {
     webAppUrl: "", // p.ej. "https://script.google.com/macros/s/AKfy.../exec"
   },

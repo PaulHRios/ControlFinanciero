@@ -13,12 +13,12 @@
       <h1>Generar hash de credenciales</h1>
       <p class="login-sub">Úsalo para cambiar usuario/contraseña sin exponerlos en el código.</p>
 
-      <label class="field"><span>Salt (debe coincidir con config.js)</span>
-        <input type="text" id="salt" value="cc_casa_cuauhtemoc_v1_8f3a" /></label>
+      <label class="field"><span>Salt (cópialo de config.js → auth.salt)</span>
+        <input type="text" id="salt" placeholder="pega aquí el salt de config.js" autocomplete="off" /></label>
       <label class="field"><span>Usuario</span>
-        <input type="text" id="user" value="paul_casa" autocapitalize="none" /></label>
-      <label class="field"><span>Nueva contraseña</span>
-        <input type="text" id="pass" placeholder="escribe la contraseña" /></label>
+        <input type="text" id="user" placeholder="usuario" autocapitalize="none" autocomplete="off" /></label>
+      <label class="field"><span>Contraseña</span>
+        <input type="text" id="pass" placeholder="escribe la contraseña" autocomplete="off" /></label>
 
       <button type="submit" class="btn btn-primary btn-block">Generar hash</button>
 
@@ -26,7 +26,7 @@
         <span>Pega esto en config.js → auth.passwordHash</span>
         <textarea id="out" rows="3" readonly placeholder="el hash aparecerá aquí"></textarea>
       </div>
-      <p class="hint">Recuerda también actualizar <strong>auth.username</strong> y <strong>auth.salt</strong> si los cambiaste, y usar el mismo salt en el Apps Script.</p>
+      <p class="hint">El hash combina usuario + contraseña, así que ninguno queda legible. Usa el mismo salt en config.js y en el Apps Script (propiedad AUTH_HASH). Borra lo que escribas aquí al terminar.</p>
     </form>
   </div>
 
@@ -35,7 +35,7 @@
     const form = document.getElementById("form");
     form.onsubmit = async (e) => {
       e.preventDefault();
-      const salt = document.getElementById("salt").value;
+      const salt = document.getElementById("salt").value.trim();
       const user = document.getElementById("user").value.trim();
       const pass = document.getElementById("pass").value;
       document.getElementById("out").value = await hashCredential(salt, user, pass);

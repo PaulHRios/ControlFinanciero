@@ -45,11 +45,9 @@ números en tiempo real. Tiempo estimado: **20–30 minutos**, una sola vez.
 3. Propiedad: `AUTH_HASH`
    Valor: el **mismo hash** que tienes en `js/config.js` → `auth.passwordHash`.
 
-   > Por defecto (usuario `paul_casa`, contraseña `Cuauhtemoc-2026`):
-   > `7c0fd26b326c72a2f261c50f5408ad75072f8f95a6aedf650a5fbbdd5a4bd6e2`
-   >
-   > Si cambiaste la contraseña con `generar-hash.html`, usa el hash nuevo
-   > tanto aquí como en `config.js`.
+   > Copia el valor exacto de `auth.passwordHash` desde `js/config.js`. Es un
+   > hash (no la contraseña), así que no revela las credenciales. Si las
+   > cambias con `generar-hash.html`, actualiza el hash aquí y en `config.js`.
 4. Guarda.
 
 ---
