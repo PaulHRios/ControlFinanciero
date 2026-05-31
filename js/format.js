@@ -1,80 +1,38 @@
 // ============================================================================
-//  Formateo de números y fechas
+//  Formateo de dinero, fechas y duraciones
 // ============================================================================
+const _mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
+const _usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-const MXN = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "MXN",
-  maximumFractionDigits: 0,
-});
+export const mxn = (n) => _mxn.format(Number(n) || 0);
+export const usd = (n) => _usd.format(Number(n) || 0);
+export const pct = (n, d = 0) => `${(Number(n) || 0).toFixed(d)}%`;
 
-const MXN2 = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "MXN",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MES_LARGO = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-const USD = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-
-const USD2 = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-export const fmtMXN = (n, decimals = false) =>
-  (decimals ? MXN2 : MXN).format(Number(n) || 0);
-
-export const fmtUSD = (n, decimals = false) =>
-  (decimals ? USD2 : USD).format(Number(n) || 0);
-
-export const fmtNumber = (n) =>
-  new Intl.NumberFormat("es-MX").format(Number(n) || 0);
-
-export const fmtPct = (n, decimals = 1) =>
-  `${(Number(n) || 0).toFixed(decimals)}%`;
-
-const MESES = [
-  "ene", "feb", "mar", "abr", "may", "jun",
-  "jul", "ago", "sep", "oct", "nov", "dic",
-];
-
-const MESES_LARGO = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-];
-
-/** "2026-05-27" -> "27 may 2026" */
-export function fmtDate(iso) {
+/** "2026-05-27" → "27 may 2026" */
+export function fecha(iso) {
   if (!iso) return "—";
   const [y, m, d] = iso.split("T")[0].split("-").map(Number);
-  return `${String(d).padStart(2, "0")} ${MESES[m - 1]} ${y}`;
+  return `${String(d).padStart(2, "0")} ${MES[m - 1]} ${y}`;
 }
 
-/** Date -> "mayo 2028" */
-export function fmtMonthYear(date) {
-  return `${MESES_LARGO[date.getMonth()]} ${date.getFullYear()}`;
+/** Date → "mayo 2028" */
+export function mesAno(date) {
+  return date ? `${MES_LARGO[date.getMonth()]} ${date.getFullYear()}` : "—";
 }
 
-/** Convierte un número de meses a "X años y X meses". */
-export function fmtDuration(months) {
-  if (!isFinite(months) || months < 0) return "—";
-  const total = Math.ceil(months);
-  if (total < 1) return "menos de un mes";
-  const y = Math.floor(total / 12);
-  const m = total % 12;
-  const parts = [];
-  if (y > 0) parts.push(`${y} año${y > 1 ? "s" : ""}`);
-  if (m > 0) parts.push(`${m} mes${m > 1 ? "es" : ""}`);
-  return parts.join(" y ") || `${total} meses`;
+/** meses → "2 años y 3 meses" */
+export function duracion(meses) {
+  if (!isFinite(meses) || meses < 0) return "—";
+  const t = Math.ceil(meses);
+  if (t < 1) return "menos de un mes";
+  const y = Math.floor(t / 12), m = t % 12;
+  const p = [];
+  if (y) p.push(`${y} año${y > 1 ? "s" : ""}`);
+  if (m) p.push(`${m} mes${m > 1 ? "es" : ""}`);
+  return p.join(" y ") || `${t} meses`;
 }
 
-export function todayISO() {
-  return new Date().toISOString().split("T")[0];
-}
+export const hoy = () => new Date().toISOString().slice(0, 10);

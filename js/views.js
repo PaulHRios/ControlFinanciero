@@ -1,515 +1,393 @@
 // ============================================================================
 //  VISTAS — render de cada pestaña
 // ============================================================================
-import { store } from "./store.js";
-import {
-  phaseSummary, casaInvertido, casaMeta, gbmBalance, gymBalance,
-  fase2Detail, estimateTimeline, gbmProjection, avgMonthlyContribution,
-} from "./compute.js";
+import * as store from "./store.js";
 import { CONFIG } from "./config.js";
-import { fmtMXN, fmtUSD, fmtPct, fmtDate, fmtMonthYear, fmtDuration } from "./format.js";
-import { getRate, getRateInfo, mxnToUsd } from "./fx.js";
-import { progressBar, lineChart } from "./charts.js";
-import { icon } from "./icons.js";
-import { emptyState } from "./ui.js";
-import { fundLabel } from "./funds.js";
+import { PHASES, label } from "./data.js";
+import { mxn, usd, pct, fecha, mesAno, duracion } from "./format.js";
+import { getRate, aUSD } from "./fx.js";
+import { icon, vacio } from "./ui.js";
 import {
-  openMovementForm, openEnvioForm, openNuForm, openPhaseBudgetForm,
+  formEnvio, formPago, formRegalo, formAporte, formPresupuesto, borrarMovimiento,
 } from "./forms.js";
 
-const STATE_BADGE = {
-  completada: `<span class="badge badge-success">Completada</span>`,
-  en_progreso: `<span class="badge badge-accent">En progreso</span>`,
-  pendiente: `<span class="badge badge-warn">Pendiente</span>`,
+const ESTADO = {
+  completada: `<span class="chip chip-ok">Completada</span>`,
+  en_progreso: `<span class="chip chip-blue">En progreso</span>`,
+  pendiente: `<span class="chip chip-warn">Pendiente</span>`,
 };
 
-// Tarjeta de estadística grande
-function statCard({ label, value, sub, tone }) {
-  return `<div class="stat-card ${tone ? "tone-" + tone : ""}">
-    <div class="stat-label">${label}</div>
-    <div class="stat-value">${value}</div>
-    ${sub ? `<div class="stat-sub">${sub}</div>` : ""}
+const KIND = {
+  transfer: { label: "Envío", ic: "arrowUp", cls: "in" },
+  pago: { label: "Pago a obra", ic: "arrowDown", cls: "out" },
+  regalo: { label: "Otro gasto", ic: "gift", cls: "out" },
+  aporte: { label: "Aportación", ic: "trending", cls: "in" },
+};
+
+const refUSD = (m) => `<span class="usd">≈ ${usd(aUSD(m))}</span>`;
+
+// Barra de progreso
+function barra(p, tono) {
+  const v = Math.max(0, Math.min(100, p || 0));
+  const color = tono || (v >= 100 ? "var(--ok)" : v >= 50 ? "var(--blue)" : "var(--warn)");
+  return `<div class="bar"><div class="bar-fill" style="width:${v}%;background:${color}"></div></div>`;
+}
+
+// ===========================================================================
+//  INICIO
+// ===========================================================================
+function inicio(app) {
+  const c = store.cuentaMama();
+  const pagado = store.casaPagado();
+  const meta = store.casaMeta();
+  const recientes = store.allMoves().slice(0, 5);
+
+  return `
+  <div class="view">
+    <header class="vhead">
+      <div><h1>Resumen</h1><p class="sub">Estado general de tus fondos</p></div>
+      <div class="fx">${icon("trending", 14)} 1 USD = <b>${getRate().toFixed(2)}</b> MXN</div>
+    </header>
+
+    ${cuentaMamaCard(c)}
+
+    <div class="cards-3">
+      ${miniCard("Casa", "home", pagado, meta)}
+      ${miniCard("GBM", "trending", store.fundBalance("gbm"), CONFIG.metas.gbm)}
+      ${miniCard("Gimnasio", "dumbbell", store.fundBalance("gym"), CONFIG.metas.gym)}
+    </div>
+
+    ${estimadorCard()}
+
+    <section class="panel">
+      <div class="panel-head"><h2>Últimos movimientos</h2></div>
+      ${recientes.length ? listaMovs(recientes) : vacio("Sin movimientos aún")}
+    </section>
   </div>`;
 }
 
-function usdRef(mxn) {
-  return `<span class="usd-ref">≈ ${fmtUSD(mxnToUsd(mxn))} USD</span>`;
-}
-
-// ---------------------------------------------------------------------------
-//  DASHBOARD
-// ---------------------------------------------------------------------------
-function dashboard(app) {
-  const invertido = casaInvertido();
-  const meta = casaMeta();
-  const casaPct = meta ? (invertido / meta) * 100 : 0;
-  const gbm = gbmBalance();
-  const gym = gymBalance();
-  const nu = store.getNu().balance;
-  const rateInfo = getRateInfo();
-  const recent = store.getAllMovements().slice(0, 5);
-
-  const fundsGrid = [
-    fundProgress("Casa", invertido, meta, "home"),
-    fundProgress("GBM", gbm, CONFIG.metas.gbm, "trending"),
-    fundProgress("Gimnasio", gym, CONFIG.metas.gym, "dumbbell"),
-    fundNu(nu),
-  ].join("");
-
+// Tarjeta protagonista: la cuenta de mamá
+function cuentaMamaCard(c) {
   return `
-  <section class="view">
-    <div class="view-head">
-      <div>
-        <h2>Dashboard</h2>
-        <p class="muted">Resumen general de los fondos</p>
-      </div>
-      <div class="fx-pill" title="Fuente: ${rateInfo.source}">
-        ${icon("refresh", 14)} 1 USD = <strong>${getRate().toFixed(2)}</strong> MXN
-      </div>
+  <section class="hero">
+    <div class="hero-top">
+      <span class="hero-label">${icon("wallet", 16)} Disponible en la cuenta de mamá</span>
     </div>
-
-    <div class="grid grid-4">${fundsGrid}</div>
-
-    ${estimatorCard()}
-
-    <div class="grid grid-2">
-      <div class="panel">
-        <div class="panel-head"><h3>Inversión en casa</h3>${STATE_BADGE.en_progreso}</div>
-        <div class="big-number">${fmtMXN(invertido)} <span class="of">de ${fmtMXN(meta)}</span></div>
-        ${usdRef(invertido)}
-        ${progressBar(casaPct)}
-        <div class="muted small">${fmtPct(casaPct)} del costo conocido para casa habitable</div>
-      </div>
-      <div class="panel">
-        <div class="panel-head"><h3>Últimos movimientos</h3></div>
-        ${recent.length ? movementMiniList(recent) : emptyState("Sin movimientos aún")}
-      </div>
+    <div class="hero-amount">${mxn(c.disponible)}</div>
+    <div class="hero-sub">${refUSD(c.disponible)} · listo para pagar a la obra</div>
+    <div class="hero-grid">
+      <div class="hero-stat"><span>${icon("arrowUp", 13)} Recibido</span><b>${mxn(c.recibido)}</b></div>
+      <div class="hero-stat"><span>${icon("arrowDown", 13)} Pagado a obra</span><b>${mxn(c.pagado)}</b></div>
+      <div class="hero-stat"><span>${icon("gift", 13)} Otros gastos</span><b>${mxn(c.regalado)}</b></div>
     </div>
   </section>`;
 }
 
-function fundProgress(name, value, meta, ic) {
-  const pct = meta ? (value / meta) * 100 : 0;
-  return `<div class="fund-card">
-    <div class="fund-card-head">${icon(ic, 18)}<span>${name}</span></div>
-    <div class="fund-amount">${fmtMXN(value)}</div>
-    <div class="muted small">meta ${fmtMXN(meta)}</div>
-    ${progressBar(pct)}
-    <div class="fund-pct">${fmtPct(pct)}</div>
+function miniCard(nombre, ic, valor, meta) {
+  const p = meta ? (valor / meta) * 100 : 0;
+  return `<div class="mini">
+    <div class="mini-head">${icon(ic, 16)}<span>${nombre}</span></div>
+    <div class="mini-amount">${mxn(valor)}</div>
+    <div class="mini-meta">meta ${mxn(meta)}</div>
+    ${barra(p)}
+    <div class="mini-pct">${pct(p)}</div>
   </div>`;
 }
 
-function fundNu(nu) {
-  return `<div class="fund-card">
-    <div class="fund-card-head">${icon("wallet", 18)}<span>Nu (buffer)</span></div>
-    <div class="fund-amount">${fmtMXN(nu)}</div>
-    <div class="muted small">${usdRef(nu)}</div>
-    <div class="fund-pct muted">disponible para enviar</div>
-  </div>`;
-}
-
-function estimatorCard() {
-  const t = estimateTimeline();
-  const rows = t.metas
+function estimadorCard() {
+  const e = store.estimador();
+  const filas = e.metas
     .map((m) => {
       if (m.indefinido)
-        return `<div class="est-row"><span class="est-name">${m.nombre}</span>
-          <span class="est-val muted">Presupuesto por definir</span></div>`;
-      if (!isFinite(m.mesesAcumulado) || m.mesesAcumulado == null)
-        return `<div class="est-row"><span class="est-name">${m.nombre}</span>
-          <span class="est-val warn">Ritmo de envíos insuficiente</span></div>`;
-      return `<div class="est-row">
-        <span class="est-name">${m.nombre}</span>
-        <span class="est-val">
-          <strong>${fmtMonthYear(m.fecha)}</strong>
-          <span class="muted small">· ${fmtDuration(m.mesesAcumulado)}</span>
-        </span>
-      </div>`;
+        return row(m.nombre, `<span class="muted">Presupuesto por definir</span>`);
+      if (!isFinite(m.meses))
+        return row(m.nombre, `<span class="warn-text">Sin ritmo de envíos suficiente</span>`);
+      return row(m.nombre, `<b>${mesAno(m.fecha)}</b> <span class="muted">· ${duracion(m.mesesAcum)}</span>`);
     })
     .join("");
+  const nota = e.insuficiente
+    ? `<p class="form-hint warn-text">${icon("clock", 13)} Registra envíos para activar la proyección.</p>`
+    : `<p class="form-hint">${icon("clock", 13)} Según un promedio de <b>${mxn(e.avg)}/mes</b> en envíos (últimos 6 meses).</p>`;
+  return `<section class="panel">
+    <div class="panel-head"><h2>${icon("target", 16)} ¿Cuándo termino cada meta?</h2></div>
+    <p class="sub">En orden: Fase 3 → Gimnasio → GBM (una después de la otra).</p>
+    <div class="rows">${filas}</div>
+    ${nota}
+  </section>`;
+  function row(a, b) {
+    return `<div class="row"><span>${a}</span><span class="row-val">${b}</span></div>`;
+  }
+}
 
-  const note = t.insufficient
-    ? `<p class="hint warn">${icon("alert", 14)} No hay ritmo de envíos suficiente en los últimos meses para estimar. Registra envíos para activar la proyección.</p>`
-    : `<p class="hint">${icon("clock", 14)} Basado en un promedio de <strong>${fmtMXN(
-        t.avgMonthly
-      )}/mes</strong> (fuente: ${t.source}, últimos ${t.monthsSampled} meses).</p>`;
+// ===========================================================================
+//  CASA
+// ===========================================================================
+function casa(app) {
+  const fases = store.resumenFases();
+  const c = store.cuentaMama();
+  const pagado = store.casaPagado();
+  const meta = store.casaMeta();
 
-  return `<div class="panel estimator">
-    <div class="panel-head"><h3>${icon("target", 18)} Estimador de tiempo</h3></div>
-    <p class="muted small">Orden de prioridad: Fase 3 → Gimnasio → GBM (en serie).</p>
-    <div class="est-list">${rows}</div>
-    ${note}
+  // Agrupar los pagos por fase en una sola pasada (evita re-escanear por fase).
+  const pagosPorFase = {};
+  for (const m of store.allMoves()) {
+    if (m.kind === "pago") (pagosPorFase[m.fase] ??= []).push(m);
+  }
+  const tarjetas = fases.map((f) => faseCard(f, pagosPorFase[f.id] || [])).join("");
+
+  return `
+  <div class="view">
+    <header class="vhead">
+      <div><h1>Casa Cuauhtémoc</h1><p class="sub">Terreno 2,000 m² · diseño industrial</p></div>
+      <button class="btn primary" data-act="pago">${icon("plus", 16)} Registrar pago</button>
+    </header>
+
+    <section class="hero compact">
+      <div class="hero-grid wide">
+        <div class="hero-stat"><span>Pagado a la casa</span><b class="ok-text">${mxn(pagado)}</b></div>
+        <div class="hero-stat"><span>Meta (presupuestos)</span><b>${mxn(meta)}</b></div>
+        <div class="hero-stat"><span>Avance</span><b class="blue-text">${pct(meta ? (pagado / meta) * 100 : 0)}</b></div>
+        <div class="hero-stat"><span>Disponible para pagar</span><b>${mxn(c.disponible)}</b></div>
+      </div>
+      ${barra(meta ? (pagado / meta) * 100 : 0)}
+    </section>
+
+    <div class="fases">${tarjetas}</div>
   </div>`;
 }
 
-function movementMiniList(items) {
-  return `<ul class="mini-list">${items
-    .map(
-      (m) => `<li>
-      <div class="mini-main">
-        <span class="mini-concept">${m.concept}</span>
-        <span class="muted small">${fundLabel(m.fund)} · ${fmtDate(m.date)}</span>
+function faseCard(f, movs) {
+  let cuerpo = "";
+  if (f.presupuesto != null) {
+    cuerpo = `
+      <div class="fase-nums">
+        <div><span>Pagado</span><b class="ok-text">${mxn(f.pagado)}</b></div>
+        <div><span>Presupuesto</span><b>${mxn(f.presupuesto)}</b></div>
+        <div><span>Falta por pagar</span><b class="warn-text">${mxn(f.falta)}</b></div>
       </div>
-      <span class="amount ${m.isDiscount ? "neg" : "pos"}">${m.isDiscount ? "−" : "+"}${fmtMXN(
-        m.amountMXN
-      )}</span>
-    </li>`
-    )
+      ${barra(f.pct)}
+      <div class="mini-pct">${pct(f.pct)} pagado</div>`;
+  } else {
+    cuerpo = `<div class="fase-nums">
+        <div><span>Pagado</span><b class="ok-text">${mxn(f.pagado)}</b></div>
+        <div><span>Presupuesto</span><b class="muted">Pendiente</b></div>
+      </div>
+      <button class="btn ghost sm" data-budget="${f.id}" data-name="${f.nombre}">${icon("edit", 13)} Definir presupuesto</button>`;
+  }
+
+  return `<section class="panel fase">
+    <div class="panel-head">
+      <div><h2>${f.nombre}</h2><p class="sub">${f.incluye}</p></div>
+      ${ESTADO[f.estado] || ""}
+    </div>
+    ${cuerpo}
+    ${movs.length ? `<details><summary>Ver ${movs.length} pago(s)</summary>${listaMovs(movs)}</details>` : ""}
+  </section>`;
+}
+
+// ===========================================================================
+//  GBM
+// ===========================================================================
+function gbm(app) {
+  const p = store.proyeccionGBM();
+  const porc = (p.saldo / p.meta) * 100;
+  const movs = store.allMoves().filter((m) => m.kind === "aporte" && m.fund === "gbm");
+
+  return `
+  <div class="view">
+    <header class="vhead">
+      <div><h1>Fondo GBM</h1><p class="sub">Inversión pasiva · 7% anual</p></div>
+      <button class="btn primary" data-act="aporte-gbm">${icon("plus", 16)} Aportar</button>
+    </header>
+
+    <div class="cards-3">
+      ${stat("Saldo actual", mxn(p.saldo), refUSD(p.saldo), "blue")}
+      ${stat("Meta", mxn(p.meta), pct(porc) + " alcanzado")}
+      ${stat("Fecha estimada", p.fecha ? mesAno(p.fecha) : "—", p.meses ? duracion(p.meses) : "registra aportaciones")}
+    </div>
+    ${barra(porc)}
+
+    <section class="panel">
+      <div class="panel-head"><h2>Proyección con interés compuesto</h2></div>
+      ${grafica(p.puntos, p.meta)}
+    </section>
+
+    <div class="cards-2">
+      ${stat("Ingreso pasivo (4%)", mxn(p.ingresoAnual) + " /año", `≈ ${mxn(p.ingresoMensual)} /mes`, "ok")}
+      <section class="panel">
+        <div class="panel-head"><h2>Aportaciones</h2></div>
+        ${movs.length ? listaMovs(movs) : vacio("Sin aportaciones aún")}
+      </section>
+    </div>
+  </div>`;
+}
+
+// ===========================================================================
+//  GIMNASIO
+// ===========================================================================
+function gym(app) {
+  const saldo = store.fundBalance("gym");
+  const meta = CONFIG.metas.gym;
+  const porc = (saldo / meta) * 100;
+  const movs = store.allMoves().filter((m) => m.kind === "aporte" && m.fund === "gym");
+
+  return `
+  <div class="view">
+    <header class="vhead">
+      <div><h1>Gimnasio / Bodega</h1><p class="sub">Bodega + equipamiento · post-2028</p></div>
+      <button class="btn primary" data-act="aporte-gym">${icon("plus", 16)} Aportar</button>
+    </header>
+
+    <div class="cards-3">
+      ${stat("Saldo actual", mxn(saldo), refUSD(saldo), "blue")}
+      ${stat("Meta", mxn(meta), pct(porc) + " alcanzado")}
+      ${stat("Prioridad", "Tercera", "después de casa y GBM")}
+    </div>
+    ${barra(porc)}
+
+    <section class="panel">
+      <div class="panel-head"><h2>Aportaciones</h2></div>
+      ${movs.length ? listaMovs(movs) : vacio("Sin aportaciones aún", "Prioridad tercera, después de casa y GBM.")}
+    </section>
+  </div>`;
+}
+
+// ===========================================================================
+//  HISTORIAL
+// ===========================================================================
+function historial(app) {
+  const all = store.allMoves();
+  return `
+  <div class="view">
+    <header class="vhead">
+      <div><h1>Historial</h1><p class="sub">Todos los movimientos</p></div>
+      <button class="btn ghost" data-export>${icon("download", 16)} CSV</button>
+    </header>
+
+    <div class="filtros">
+      <select id="fl-tipo">
+        <option value="">Todos los tipos</option>
+        <option value="transfer">Envíos</option>
+        <option value="pago">Pagos a obra</option>
+        <option value="regalo">Otros gastos</option>
+        <option value="aporte">Aportaciones</option>
+      </select>
+      <input type="month" id="fl-mes">
+    </div>
+
+    <section class="panel" id="hist">${listaMovs(all)}</section>
+  </div>`;
+}
+
+// --- Lista de movimientos (componente compartido) ---------------------------
+function listaMovs(items) {
+  if (!items.length) return vacio("Sin movimientos");
+  return `<ul class="movs">${items
+    .map((m) => {
+      const k = KIND[m.kind] || KIND.transfer;
+      const signo = k.cls === "out" ? "−" : "+";
+      const destino = m.fase ? " · " + label(m.fase) : m.fund ? " · " + label(m.fund) : "";
+      return `<li class="mov">
+        <div class="mov-ic ${k.cls}">${icon(k.ic, 15)}</div>
+        <div class="mov-main">
+          <span class="mov-concepto">${m.concepto || k.label}</span>
+          <span class="mov-meta">${k.label}${destino} · ${fecha(m.date)}${m.notas ? " · " + m.notas : ""}</span>
+        </div>
+        <span class="mov-monto ${k.cls}">${signo}${mxn(m.monto)}</span>
+        ${m.historical
+          ? `<span class="tag">histórico</span>`
+          : `<button class="ghost-icon del" data-del="${m.id}" aria-label="Borrar">${icon("trash", 15)}</button>`}
+      </li>`;
+    })
     .join("")}</ul>`;
 }
 
-// ---------------------------------------------------------------------------
-//  CASA
-// ---------------------------------------------------------------------------
-function casa(app) {
-  const phases = phaseSummary();
-  const invertido = casaInvertido();
-  const meta = casaMeta();
-  const f2 = fase2Detail();
-
-  const phaseCards = phases
-    .map((p) => {
-      const editable = p.placeholder;
-      const movs = store.getAllMovements().filter((m) => m.fund === p.id);
-      const budgetTxt =
-        p.presupuesto != null
-          ? fmtMXN(p.presupuesto)
-          : `<span class="warn">Pendiente</span>`;
-
-      let progress = "";
-      if (p.presupuesto) {
-        progress = `${progressBar(p.pct)}
-          <div class="muted small">${fmtMXN(p.neto)} aplicado · ${fmtPct(p.pct)}</div>`;
-      }
-
-      // Detalle especial Fase 2
-      let special = "";
-      if (p.id === "casa_fase2") {
-        special = `<div class="f2-split">
-          <div><span class="muted small">Total enviado por Paúl</span><strong>${fmtMXN(
-            f2.enviado
-          )}</strong></div>
-          <div><span class="muted small">Aplicado a obra (neto)</span><strong>${fmtMXN(
-            f2.neto
-          )}</strong></div>
-          <div><span class="muted small">Diferencia (anticipo + regalo)</span><strong>${fmtMXN(
-            f2.diferencia
-          )}</strong></div>
-        </div>`;
-      }
-
-      return `<div class="panel phase">
-        <div class="panel-head">
-          <div><h3>${p.nombre}</h3><p class="muted small">${p.incluye}</p></div>
-          ${STATE_BADGE[p.estado] || ""}
-        </div>
-        <div class="phase-budget">
-          <span class="muted small">Presupuesto</span> ${budgetTxt}
-          ${editable ? `<button class="link-btn" data-edit-budget="${p.id}" data-name="${p.nombre}">${icon("edit", 13)} Definir</button>` : ""}
-        </div>
-        ${special}
-        ${progress}
-        ${movs.length ? `<details class="phase-history"><summary>Ver ${movs.length} movimiento(s)</summary>${movementTable(movs)}</details>` : `<p class="muted small">Sin pagos registrados.</p>`}
-      </div>`;
-    })
-    .join("");
-
-  return `
-  <section class="view">
-    <div class="view-head">
-      <div><h2>Casa Cuauhtémoc</h2><p class="muted">Terreno 2,000 m² · diseño industrial</p></div>
-      <button class="btn btn-primary" data-add-mov>${icon("plus", 16)} Registrar pago</button>
-    </div>
-
-    <div class="grid grid-3">
-      ${statCard({ label: "Invertido (neto)", value: fmtMXN(invertido), sub: usdRef(invertido), tone: "success" })}
-      ${statCard({ label: "Meta casa habitable", value: fmtMXN(meta), sub: "presupuestos conocidos" })}
-      ${statCard({ label: "Avance", value: fmtPct(meta ? (invertido / meta) * 100 : 0), tone: "accent" })}
-    </div>
-    ${progressBar(meta ? (invertido / meta) * 100 : 0)}
-
-    <div class="phases">${phaseCards}</div>
-  </section>`;
+// --- Tarjetitas auxiliares ---------------------------------------------------
+function stat(label, valor, sub, tono) {
+  return `<div class="panel stat ${tono ? "t-" + tono : ""}">
+    <span class="stat-label">${label}</span>
+    <span class="stat-val">${valor}</span>
+    ${sub ? `<span class="stat-sub">${sub}</span>` : ""}
+  </div>`;
 }
 
-// ---------------------------------------------------------------------------
-//  GBM
-// ---------------------------------------------------------------------------
-function gbm(app) {
-  const proj = gbmProjection();
-  const pct = (proj.balance / proj.meta) * 100;
-  const movs = store.getAllMovements().filter((m) => m.fund === "gbm");
-
-  return `
-  <section class="view">
-    <div class="view-head">
-      <div><h2>Fondo GBM</h2><p class="muted">Inversión pasiva · 7% anual</p></div>
-      <button class="btn btn-primary" data-add-mov="gbm">${icon("plus", 16)} Aportar</button>
-    </div>
-
-    <div class="grid grid-3">
-      ${statCard({ label: "Saldo actual", value: fmtMXN(proj.balance), sub: usdRef(proj.balance), tone: "accent" })}
-      ${statCard({ label: "Meta", value: fmtMXN(proj.meta), sub: fmtPct(pct) + " alcanzado" })}
-      ${statCard({
-        label: "Fecha estimada meta",
-        value: proj.fecha ? fmtMonthYear(proj.fecha) : "—",
-        sub: proj.months ? fmtDuration(proj.months) : "registra aportaciones",
-      })}
-    </div>
-    ${progressBar(pct)}
-
-    <div class="panel">
-      <div class="panel-head"><h3>Proyección con interés compuesto (7%)</h3></div>
-      ${lineChart(proj.points, proj.meta)}
-    </div>
-
-    <div class="grid grid-2">
-      ${statCard({
-        label: "Ingreso pasivo proyectado (4%)",
-        value: fmtMXN(proj.ingresoPasivoAnual) + " / año",
-        sub: `≈ ${fmtMXN(proj.ingresoPasivoMensual)} / mes`,
-        tone: "success",
-      })}
-      <div class="panel">
-        <div class="panel-head"><h3>Aportaciones</h3></div>
-        ${movs.length ? movementTable(movs) : emptyState("Sin aportaciones aún", "Usa “Aportar” para registrar la primera.")}
-      </div>
-    </div>
-  </section>`;
+// --- Gráfica SVG de área -----------------------------------------------------
+function grafica(puntos, meta) {
+  if (!puntos || puntos.length < 2) return `<div class="empty"><p class="empty-sub">Datos insuficientes para proyectar.</p></div>`;
+  const W = 640, H = 200, pad = 10;
+  const maxX = puntos[puntos.length - 1].mes || 1;
+  const maxY = meta * 1.02;
+  const x = (m) => pad + (m / maxX) * (W - 2 * pad);
+  const y = (val) => H - pad - (val / maxY) * (H - 2 * pad);
+  const line = puntos.map((p) => `${x(p.mes).toFixed(1)},${y(p.valor).toFixed(1)}`).join(" ");
+  const area = `${pad},${H - pad} ${line} ${x(maxX).toFixed(1)},${H - pad}`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" preserveAspectRatio="none">
+    <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="var(--blue)" stop-opacity=".3"/>
+      <stop offset="100%" stop-color="var(--blue)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <polygon points="${area}" fill="url(#g)"/>
+    <polyline points="${line}" fill="none" stroke="var(--blue)" stroke-width="2"/>
+  </svg>`;
 }
 
-// ---------------------------------------------------------------------------
-//  GIMNASIO
-// ---------------------------------------------------------------------------
-function gym(app) {
-  const balance = gymBalance();
-  const meta = CONFIG.metas.gym;
-  const pct = (balance / meta) * 100;
-  const { avg } = avgMonthlyContribution(6);
-  const remaining = Math.max(0, meta - balance);
-  const months = avg > 0 ? remaining / avg : null;
-  const fecha = months != null ? monthsFromNow(months) : null;
-  const movs = store.getAllMovements().filter((m) => m.fund === "gym");
-
-  return `
-  <section class="view">
-    <div class="view-head">
-      <div><h2>Gimnasio / Bodega</h2><p class="muted">Bodega + equipamiento · post-2028</p></div>
-      <button class="btn btn-primary" data-add-mov="gym">${icon("plus", 16)} Aportar</button>
-    </div>
-
-    <div class="grid grid-3">
-      ${statCard({ label: "Saldo actual", value: fmtMXN(balance), sub: usdRef(balance), tone: "accent" })}
-      ${statCard({ label: "Meta", value: fmtMXN(meta), sub: fmtPct(pct) + " alcanzado" })}
-      ${statCard({
-        label: "Fecha estimada",
-        value: fecha ? fmtMonthYear(fecha) : "—",
-        sub: months != null ? fmtDuration(months) + " al ritmo actual" : "registra envíos",
-      })}
-    </div>
-    ${progressBar(pct)}
-
-    <div class="panel">
-      <div class="panel-head"><h3>Aportaciones</h3></div>
-      ${movs.length ? movementTable(movs) : emptyState("Sin aportaciones aún", "Prioridad tercera, después de casa y GBM.")}
-    </div>
-  </section>`;
-}
-
-// ---------------------------------------------------------------------------
-//  NU & ENVÍOS
-// ---------------------------------------------------------------------------
-function nu(app) {
-  const nuData = store.getNu();
-  const envios = store.getEnvios();
-  const rate = getRate();
-
-  const totUsd = envios.reduce((s, e) => s + e.usd, 0);
-  const totMxn = envios.reduce((s, e) => s + e.mxn, 0);
-  const avgRate = totUsd ? totMxn / totUsd : 0;
-  const rates = envios.map((e) => e.rate).filter(Boolean);
-  const best = rates.length ? Math.max(...rates) : 0;
-  const worst = rates.length ? Math.min(...rates) : 0;
-
-  return `
-  <section class="view">
-    <div class="view-head">
-      <div><h2>Nu & Envíos</h2><p class="muted">Buffer de envíos USD → MXN</p></div>
-      <button class="btn btn-primary" data-add-envio>${icon("send", 16)} Registrar envío</button>
-    </div>
-
-    <div class="grid grid-3">
-      <div class="panel">
-        <div class="panel-head"><h3>Saldo Nu</h3>
-          <button class="icon-btn" data-edit-nu aria-label="Editar saldo">${icon("edit", 16)}</button>
-        </div>
-        <div class="big-number">${fmtMXN(nuData.balance)}</div>
-        ${usdRef(nuData.balance)}
-      </div>
-      ${statCard({ label: "Total enviado (histórico)", value: fmtUSD(totUsd, true), sub: fmtMXN(totMxn) + " recibidos" })}
-      ${statCard({ label: "Tipo de cambio promedio", value: avgRate ? avgRate.toFixed(4) : "—", sub: `oficial hoy: ${rate.toFixed(4)}` })}
-    </div>
-
-    <div class="grid grid-2">
-      ${statCard({ label: "Mejor tipo de cambio", value: best ? best.toFixed(4) : "—", tone: "success" })}
-      ${statCard({ label: "Peor tipo de cambio", value: worst ? worst.toFixed(4) : "—", tone: "warn" })}
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h3>Historial de envíos</h3></div>
-      ${envios.length ? envioTable(envios) : emptyState("Aún no registras envíos", "Cada envío alimenta el estimador de tiempo.")}
-    </div>
-  </section>`;
-}
-
-// ---------------------------------------------------------------------------
-//  HISTORIAL COMPLETO
-// ---------------------------------------------------------------------------
-function historial(app) {
-  const all = store.getAllMovements();
-  const funds = [...new Set(all.map((m) => m.fund))];
-  const fundOpts = funds.map((f) => `<option value="${f}">${fundLabel(f)}</option>`).join("");
-
-  return `
-  <section class="view">
-    <div class="view-head">
-      <div><h2>Historial completo</h2><p class="muted">Todos los movimientos</p></div>
-      <button class="btn btn-ghost" data-export>${icon("download", 16)} Exportar CSV</button>
-    </div>
-
-    <div class="filters">
-      <select id="filter-fund"><option value="">Todos los fondos</option>${fundOpts}</select>
-      <select id="filter-type">
-        <option value="">Todos los tipos</option>
-        <option value="in">Entradas</option>
-        <option value="discount">Descuentos</option>
-        <option value="historical">Datos históricos</option>
-        <option value="new">Registros nuevos</option>
-      </select>
-      <input type="month" id="filter-month" />
-    </div>
-
-    <div class="panel" id="hist-table">${movementTable(all, true)}</div>
-  </section>`;
-}
-
-// --- Tablas reutilizables ----------------------------------------------------
-function movementTable(items, showFund = false) {
-  if (!items.length) return emptyState("Sin movimientos");
-  return `<div class="table-wrap"><table class="table">
-    <thead><tr>
-      <th>Fecha</th><th>Concepto</th>${showFund ? "<th>Fondo</th>" : ""}<th class="right">Monto</th><th></th>
-    </tr></thead>
-    <tbody>
-    ${items
-      .map(
-        (m) => `<tr>
-        <td>${fmtDate(m.date)}</td>
-        <td>${m.concept}${m.notes ? `<span class="muted small block">${m.notes}</span>` : ""}</td>
-        ${showFund ? `<td>${fundLabel(m.fund)}</td>` : ""}
-        <td class="right amount ${m.isDiscount ? "neg" : "pos"}">${m.isDiscount ? "−" : "+"}${fmtMXN(m.amountMXN)}</td>
-        <td class="right">${m.historical ? `<span class="tag">histórico</span>` : `<span class="tag tag-new">nuevo</span>`}</td>
-      </tr>`
-      )
-      .join("")}
-    </tbody>
-  </table></div>`;
-}
-
-function envioTable(items) {
-  return `<div class="table-wrap"><table class="table">
-    <thead><tr><th>Fecha</th><th>USD</th><th>T.C.</th><th>MXN</th><th>Plataforma</th><th>Destino</th></tr></thead>
-    <tbody>
-    ${items
-      .map(
-        (e) => `<tr>
-        <td>${fmtDate(e.date)}</td>
-        <td>${fmtUSD(e.usd, true)}</td>
-        <td>${e.rate.toFixed(4)}</td>
-        <td class="amount pos">${fmtMXN(e.mxn)}</td>
-        <td>${e.platform}</td>
-        <td>${fundLabel(e.fund)}</td>
-      </tr>`
-      )
-      .join("")}
-    </tbody>
-  </table></div>`;
-}
-
-function monthsFromNow(months) {
-  const d = new Date();
-  d.setMonth(d.getMonth() + Math.ceil(months));
-  return d;
-}
-
-// --- Wiring de eventos por vista --------------------------------------------
+// --- Wiring de acciones por vista -------------------------------------------
 function wire(tab, root, app) {
-  root.querySelectorAll("[data-add-mov]").forEach((b) => {
+  root.querySelectorAll("[data-act]").forEach((b) => {
     b.onclick = () => {
-      const fund = b.getAttribute("data-add-mov");
-      openMovementForm(app.refresh, fund && fund !== "" ? fund : "casa_fase2");
+      const a = b.dataset.act;
+      if (a === "pago") formPago(app.refresh);
+      else if (a === "aporte-gbm") formAporte(app.refresh, "gbm");
+      else if (a === "aporte-gym") formAporte(app.refresh, "gym");
     };
   });
-  const envBtn = root.querySelector("[data-add-envio]");
-  if (envBtn) envBtn.onclick = () => openEnvioForm(app.refresh);
-  const nuBtn = root.querySelector("[data-edit-nu]");
-  if (nuBtn) nuBtn.onclick = () => openNuForm(app.refresh);
-  root.querySelectorAll("[data-edit-budget]").forEach((b) => {
-    b.onclick = () =>
-      openPhaseBudgetForm(b.getAttribute("data-edit-budget"), b.getAttribute("data-name"), app.refresh);
+  root.querySelectorAll("[data-budget]").forEach((b) => {
+    b.onclick = () => formPresupuesto(b.dataset.budget, b.dataset.name, app.refresh);
+  });
+  root.querySelectorAll("[data-del]").forEach((b) => {
+    b.onclick = () => borrarMovimiento(b.dataset.del, app.refresh);
   });
 
   if (tab === "historial") wireHistorial(root, app);
 }
 
 function wireHistorial(root, app) {
-  const all = store.getAllMovements();
-  const fFund = root.querySelector("#filter-fund");
-  const fType = root.querySelector("#filter-type");
-  const fMonth = root.querySelector("#filter-month");
-  const tableHost = root.querySelector("#hist-table");
-
-  const apply = () => {
-    let rows = all;
-    if (fFund.value) rows = rows.filter((m) => m.fund === fFund.value);
-    if (fMonth.value) rows = rows.filter((m) => (m.date || "").startsWith(fMonth.value));
-    switch (fType.value) {
-      case "in": rows = rows.filter((m) => !m.isDiscount); break;
-      case "discount": rows = rows.filter((m) => m.isDiscount); break;
-      case "historical": rows = rows.filter((m) => m.historical); break;
-      case "new": rows = rows.filter((m) => !m.historical); break;
-    }
-    tableHost.innerHTML = movementTable(rows, true);
+  const all = store.allMoves();
+  const tipo = root.querySelector("#fl-tipo");
+  const mes = root.querySelector("#fl-mes");
+  const host = root.querySelector("#hist");
+  const aplicar = () => {
+    let r = all;
+    if (tipo.value) r = r.filter((m) => m.kind === tipo.value);
+    if (mes.value) r = r.filter((m) => (m.date || "").startsWith(mes.value));
+    host.innerHTML = listaMovs(r);
+    host.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => borrarMovimiento(b.dataset.del, app.refresh)));
   };
-  [fFund, fType, fMonth].forEach((el) => (el.onchange = apply));
-
+  tipo.onchange = aplicar;
+  mes.onchange = aplicar;
   root.querySelector("[data-export]").onclick = () => exportCSV(all);
 }
 
 function exportCSV(items) {
-  const headers = ["Fecha", "Concepto", "Fondo", "Monto MXN", "Descuento", "Notas", "Origen"];
-  const lines = items.map((m) =>
-    [m.date, m.concept, fundLabel(m.fund), m.amountMXN, m.isDiscount ? "si" : "no", (m.notes || "").replace(/"/g, "'"), m.historical ? "historico" : "nuevo"]
-      .map((c) => `"${c}"`)
-      .join(",")
+  const head = ["Fecha", "Tipo", "Concepto", "Fase/Fondo", "Monto MXN", "Notas", "Origen"];
+  const rows = items.map((m) =>
+    [m.date, KIND[m.kind]?.label || m.kind, m.concepto, label(m.fase || m.fund || ""), m.monto, (m.notas || "").replace(/"/g, "'"), m.historical ? "historico" : "nuevo"]
+      .map((c) => `"${c}"`).join(",")
   );
-  const csv = [headers.join(","), ...lines].join("\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
+  const csv = "﻿" + [head.join(","), ...rows].join("\n");
   const a = document.createElement("a");
-  a.href = url;
-  a.download = `casa-cuauhtemoc-movimientos.csv`;
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "casa-cuauhtemoc.csv";
   a.click();
-  URL.revokeObjectURL(url);
 }
 
-const VIEWS = { dashboard, casa, gbm, gym, nu, historial };
+const VIEWS = { inicio, casa, gbm, gym, historial };
 
-export function renderView(tab, root, app) {
-  const fn = VIEWS[tab] || dashboard;
+export function render(tab, root, app) {
+  const fn = VIEWS[tab] || inicio;
   root.innerHTML = fn(app);
-  root.classList.remove("fade-in");
+  root.classList.remove("fade");
   void root.offsetWidth;
-  root.classList.add("fade-in");
+  root.classList.add("fade");
   wire(tab, root, app);
 }

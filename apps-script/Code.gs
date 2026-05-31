@@ -5,13 +5,17 @@
  *  Sincroniza los datos del dashboard entre Paúl (Colorado) y su mamá
  *  (Cuauhtémoc) usando un Google Sheet privado.
  *
- *  SEGURIDAD: cada request debe incluir el hash de credenciales (token). El
- *  script lo compara contra el hash guardado en las Propiedades del Script
+ *  SEGURIDAD: cada request incluye el hash de credenciales (token). El script
+ *  lo compara contra el hash guardado en las Propiedades del Script
  *  (Project Settings → Script properties → AUTH_HASH). Nunca se guarda la
  *  contraseña en claro.
  *
+ *  Modelo (igual que la app):
+ *    Movimientos → kind = transfer | pago | regalo | aporte
+ *    Config      → presupuestos editables (budget_<faseId>)
+ *
  *  Hojas requeridas (nombres exactos):
- *    "Movimientos" | "Envios" | "Fondos" | "Config"
+ *    "Movimientos" | "Config"
  * ============================================================================
  */
 
@@ -25,18 +29,16 @@ function doPost(e) {
   try {
     var req = JSON.parse(e.postData.contents || '{}');
 
-    // --- Autenticación ---
     if (req.token !== getExpectedHash_()) {
       return json_({ ok: false, error: 'unauthorized' });
     }
 
     switch (req.action) {
-      case 'getAll':        return json_(getAll_());
-      case 'addMovement':   return json_(addMovement_(req.record));
-      case 'addEnvio':      return json_(addEnvio_(req.record));
-      case 'setNu':         return json_(setNu_(req.nu));
-      case 'setPhaseBudget':return json_(setPhaseBudget_(req.phaseId, req.value));
-      default:              return json_({ ok: false, error: 'unknown_action' });
+      case 'getAll':     return json_(getAll_());
+      case 'addMove':    return json_(addMove_(req.rec));
+      case 'deleteMove': return json_(deleteMove_(req.id));
+      case 'setBudget':  return json_(setBudget_(req.faseId, req.value));
+      default:           return json_({ ok: false, error: 'unknown_action' });
     }
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -52,37 +54,31 @@ function doGet() {
 function getAll_() {
   return {
     ok: true,
-    movements: readSheet_('Movimientos'),
-    envios: readSheet_('Envios'),
-    nu: readNu_(),
-    phaseBudgets: readPhaseBudgets_()
+    moves: readMoves_(),
+    budgets: readBudgets_()
   };
 }
 
 /* ------------------------------- Escritura ------------------------------ */
-function addMovement_(r) {
+function addMove_(r) {
   var sh = sheet_('Movimientos');
-  ensureHeaders_(sh, ['id','date','fund','concept','amountMXN','isDiscount','notes','historical','createdAt']);
-  sh.appendRow([r.id, r.date, r.fund, r.concept, r.amountMXN, r.isDiscount, r.notes, false, r.createdAt]);
+  ensureHeaders_(sh, ['id', 'date', 'kind', 'fase', 'fund', 'concepto', 'monto', 'notas', 'historical', 'createdAt']);
+  sh.appendRow([r.id, r.date, r.kind, r.fase || '', r.fund || '', r.concepto || '', r.monto, r.notas || '', false, r.createdAt || '']);
   return { ok: true };
 }
 
-function addEnvio_(r) {
-  var sh = sheet_('Envios');
-  ensureHeaders_(sh, ['id','date','usd','rate','mxn','platform','fund','notes','createdAt']);
-  sh.appendRow([r.id, r.date, r.usd, r.rate, r.mxn, r.platform, r.fund, r.notes, r.createdAt]);
+function deleteMove_(id) {
+  var sh = ss_().getSheetByName('Movimientos');
+  if (!sh) return { ok: true };
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] === id) { sh.deleteRow(i + 1); break; }
+  }
   return { ok: true };
 }
 
-function setNu_(nu) {
-  var sh = sheet_('Fondos');
-  setConfigValue_(sh, 'nu_balance', nu.balance);
-  return { ok: true };
-}
-
-function setPhaseBudget_(phaseId, value) {
-  var sh = sheet_('Config');
-  setConfigValue_(sh, 'budget_' + phaseId, value);
+function setBudget_(faseId, value) {
+  setConfigValue_(sheet_('Config'), 'budget_' + faseId, value);
   return { ok: true };
 }
 
@@ -99,22 +95,24 @@ function ensureHeaders_(sh, headers) {
   if (sh.getLastRow() === 0) sh.appendRow(headers);
 }
 
-function readSheet_(name) {
-  var sh = ss_().getSheetByName(name);
+function readMoves_() {
+  var sh = ss_().getSheetByName('Movimientos');
   if (!sh || sh.getLastRow() < 2) return [];
   var values = sh.getDataRange().getValues();
   var headers = values.shift();
   return values.map(function (row) {
-    var obj = {};
-    headers.forEach(function (h, i) { obj[h] = row[i]; });
-    if (obj.date instanceof Date) obj.date = Utilities.formatDate(obj.date, 'UTC', 'yyyy-MM-dd');
-    obj.isDiscount = obj.isDiscount === true || obj.isDiscount === 'TRUE' || obj.isDiscount === 'true';
-    obj.historical = obj.historical === true || obj.historical === 'TRUE' || obj.historical === 'true';
-    return obj;
+    var o = {};
+    headers.forEach(function (h, i) { o[h] = row[i]; });
+    if (o.date instanceof Date) o.date = Utilities.formatDate(o.date, 'UTC', 'yyyy-MM-dd');
+    o.monto = Number(o.monto) || 0;
+    o.fase = o.fase || null;
+    o.fund = o.fund || null;
+    o.historical = false; // los de la hoja siempre son del usuario (borrables)
+    return o;
   });
 }
 
-// "Fondos" y "Config" se almacenan como pares clave/valor (col A = clave, col B = valor).
+// "Config" se almacena como pares clave/valor (col A = clave, col B = valor).
 function setConfigValue_(sh, key, value) {
   var data = sh.getDataRange().getValues();
   for (var i = 0; i < data.length; i++) {
@@ -123,27 +121,11 @@ function setConfigValue_(sh, key, value) {
   sh.appendRow([key, value]);
 }
 
-function getConfigValue_(name, key) {
-  var sh = ss_().getSheetByName(name);
-  if (!sh) return null;
-  var data = sh.getDataRange().getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (data[i][0] === key) return data[i][1];
-  }
-  return null;
-}
-
-function readNu_() {
-  var balance = getConfigValue_('Fondos', 'nu_balance');
-  return { balance: Number(balance) || 0, history: [] };
-}
-
-function readPhaseBudgets_() {
+function readBudgets_() {
   var sh = ss_().getSheetByName('Config');
   var out = {};
   if (!sh) return out;
-  var data = sh.getDataRange().getValues();
-  data.forEach(function (row) {
+  sh.getDataRange().getValues().forEach(function (row) {
     if (String(row[0]).indexOf('budget_') === 0) {
       out[String(row[0]).replace('budget_', '')] = Number(row[1]) || 0;
     }

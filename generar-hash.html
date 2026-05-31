@@ -8,37 +8,37 @@
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <div class="login-screen">
+  <div class="login">
     <form class="login-card" id="form" style="max-width:440px">
       <h1>Generar hash de credenciales</h1>
-      <p class="login-sub">Úsalo para cambiar usuario/contraseña sin exponerlos en el código.</p>
+      <p class="sub">Úsalo para cambiar usuario/contraseña sin exponerlos en el código.</p>
 
       <label class="field"><span>Salt (cópialo de config.js → auth.salt)</span>
-        <input type="text" id="salt" placeholder="pega aquí el salt de config.js" autocomplete="off" /></label>
+        <input type="text" id="salt" placeholder="pega el salt de config.js" autocomplete="off"></label>
       <label class="field"><span>Usuario</span>
-        <input type="text" id="user" placeholder="usuario" autocapitalize="none" autocomplete="off" /></label>
+        <input type="text" id="user" placeholder="usuario" autocapitalize="none" autocomplete="off"></label>
       <label class="field"><span>Contraseña</span>
-        <input type="text" id="pass" placeholder="escribe la contraseña" autocomplete="off" /></label>
+        <input type="text" id="pass" placeholder="escribe la contraseña" autocomplete="off"></label>
 
-      <button type="submit" class="btn btn-primary btn-block">Generar hash</button>
+      <button type="submit" class="btn primary block">Generar hash</button>
 
-      <div class="field" style="margin-top:8px">
-        <span>Pega esto en config.js → auth.passwordHash</span>
-        <textarea id="out" rows="3" readonly placeholder="el hash aparecerá aquí"></textarea>
-      </div>
-      <p class="hint">El hash combina usuario + contraseña, así que ninguno queda legible. Usa el mismo salt en config.js y en el Apps Script (propiedad AUTH_HASH). Borra lo que escribas aquí al terminar.</p>
+      <label class="field" style="margin-top:8px"><span>Pega esto en config.js → auth.passwordHash</span>
+        <textarea id="out" rows="3" readonly placeholder="el hash aparecerá aquí"></textarea></label>
+      <p class="sub">El hash combina usuario + contraseña, así que ninguno queda legible. Usa el mismo salt en config.js y en el Apps Script (AUTH_HASH). Borra lo que escribas aquí al terminar.</p>
     </form>
   </div>
 
   <script type="module">
-    import { hashCredential } from "./js/crypto.js";
-    const form = document.getElementById("form");
-    form.onsubmit = async (e) => {
+    async function sha256(t) {
+      const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+      return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+    }
+    document.getElementById("form").onsubmit = async (e) => {
       e.preventDefault();
       const salt = document.getElementById("salt").value.trim();
       const user = document.getElementById("user").value.trim();
       const pass = document.getElementById("pass").value;
-      document.getElementById("out").value = await hashCredential(salt, user, pass);
+      document.getElementById("out").value = await sha256(`${salt}:${user}:${pass}`);
     };
   </script>
 </body>

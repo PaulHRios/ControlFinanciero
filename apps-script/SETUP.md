@@ -13,11 +13,9 @@ números en tiempo real. Tiempo estimado: **20–30 minutos**, una sola vez.
 
 1. Entra a [sheets.google.com](https://sheets.google.com) con la cuenta de Paúl.
 2. Crea una hoja nueva y nómbrala, por ejemplo, **Casa Cuauhtémoc — Datos**.
-3. Crea **4 hojas** (pestañas inferiores) con estos nombres **exactos**:
+3. Crea **2 hojas** (pestañas inferiores) con estos nombres **exactos**:
 
    - `Movimientos`
-   - `Envios`
-   - `Fondos`
    - `Config`
 
    No es necesario poner encabezados: el script los crea solo.

@@ -1,193 +1,169 @@
 // ============================================================================
-//  Formularios: nuevo movimiento, nuevo envío, editar Nu, editar presupuesto
+//  FORMULARIOS — registrar/borrar movimientos, editar presupuestos
 // ============================================================================
-import { store } from "./store.js";
-import { openModal, confirmDialog, toast } from "./ui.js";
-import { FUND_OPTIONS, CONCEPT_OPTIONS, PLATFORM_OPTIONS } from "./funds.js";
-import { fmtMXN, fmtUSD, todayISO } from "./format.js";
-import { getRate } from "./fx.js";
+import * as store from "./store.js";
+import { modal, confirmar, toast, icon } from "./ui.js";
+import { PHASES, PLATAFORMAS, label } from "./data.js";
+import { mxn, hoy } from "./format.js";
 
-const opt = (o, sel) =>
-  o
-    .map((x) => {
-      const v = typeof x === "string" ? x : x.value;
-      const l = typeof x === "string" ? x : x.label;
-      return `<option value="${v}" ${v === sel ? "selected" : ""}>${l}</option>`;
-    })
-    .join("");
+const v = (id) => document.getElementById(id).value.trim();
+const num = (id) => parseFloat(document.getElementById(id).value) || 0;
 
-// --- Nuevo movimiento --------------------------------------------------------
-export function openMovementForm(onDone, preselectFund = "casa_fase2") {
-  const { close } = openModal({
-    title: "Registrar movimiento",
+const faseOptions = (sel) =>
+  PHASES.map((p) => `<option value="${p.id}" ${p.id === sel ? "selected" : ""}>${p.nombre}</option>`).join("");
+
+// ---------------------------------------------------------------------------
+//  ENVÍO de Paúl → cuenta de mamá (transfer)
+// ---------------------------------------------------------------------------
+export function formEnvio(onDone) {
+  const m = modal({
+    title: "Registrar envío a mamá",
     body: `
-      <form id="mv-form" class="form-grid">
-        <label class="field"><span>Fecha</span>
-          <input type="date" id="mv-date" value="${todayISO()}" required></label>
-        <label class="field"><span>Concepto</span>
-          <select id="mv-concept">${opt(CONCEPT_OPTIONS, "Transferencia")}</select></label>
-        <label class="field"><span>Fondo destino</span>
-          <select id="mv-fund">${opt(FUND_OPTIONS, preselectFund)}</select></label>
-        <label class="field"><span>Monto (MXN)</span>
-          <input type="number" id="mv-amount" min="0" step="0.01" placeholder="0.00" required></label>
-        <label class="field field-full"><span>Notas (opcional)</span>
-          <input type="text" id="mv-notes" placeholder="Detalle..."></label>
-        <label class="check-field field-full">
-          <input type="checkbox" id="mv-discount">
-          <span>Es descuento / devolución (resta del total)</span></label>
-      </form>`,
-    actions: `
-      <button class="btn btn-ghost" data-cancel>Cancelar</button>
-      <button class="btn btn-primary" data-save>Guardar</button>`,
+      <p class="form-hint">${icon("arrowUp", 14)} Dinero que envías a la cuenta de tu mamá. Suma a su saldo disponible.</p>
+      <div class="form-grid">
+        <label class="field"><span>Fecha</span><input type="date" id="f-date" value="${hoy()}"></label>
+        <label class="field"><span>Monto (MXN)</span><input type="number" id="f-monto" min="0" step="0.01" placeholder="0"></label>
+        <label class="field"><span>Plataforma</span><select id="f-plat">${PLATAFORMAS.map((p) => `<option>${p}</option>`).join("")}</select></label>
+        <label class="field"><span>Concepto</span><input type="text" id="f-concepto" value="Transferencia"></label>
+        <label class="field col-2"><span>Notas (opcional)</span><input type="text" id="f-notas" placeholder="..."></label>
+      </div>`,
+    footer: btnGuardar(),
   });
+  wireSave(m, onDone, () => {
+    const monto = num("f-monto");
+    if (!(monto > 0)) return toast("Captura un monto válido.", "err"), null;
+    return { date: v("f-date"), kind: "transfer", concepto: v("f-concepto") || "Transferencia", monto, notas: `${v("f-plat")}${v("f-notas") ? " · " + v("f-notas") : ""}` };
+  }, (mv) => `Vas a registrar un envío de <b>${mxn(mv.monto)}</b> a la cuenta de tu mamá.`);
+}
 
-  document.querySelector("[data-cancel]").onclick = close;
-  document.querySelector("[data-save]").onclick = async () => {
-    const date = val("mv-date");
-    const amount = parseFloat(val("mv-amount"));
-    if (!date || !(amount > 0)) {
-      toast("Completa fecha y monto válido.", "error");
-      return;
-    }
-    const mv = {
-      date,
-      concept: val("mv-concept"),
-      fund: val("mv-fund"),
-      amountMXN: amount,
-      isDiscount: document.getElementById("mv-discount").checked,
-      notes: val("mv-notes"),
-    };
-    close();
-    const ok = await confirmDialog({
-      title: "Confirmar registro",
-      message: `Vas a registrar <strong>${mv.isDiscount ? "−" : "+"}${fmtMXN(
-        amount
-      )}</strong>. Este movimiento <strong>no podrá editarse</strong> después de guardarse.`,
-      confirmLabel: "Guardar definitivamente",
-    });
+// ---------------------------------------------------------------------------
+//  PAGO a la obra (pago) — mamá saca de su disponible y paga una fase
+// ---------------------------------------------------------------------------
+export function formPago(onDone, faseSel = "casa_fase2") {
+  const disp = store.cuentaMama().disponible;
+  const m = modal({
+    title: "Registrar pago a la obra",
+    body: `
+      <p class="form-hint">${icon("arrowDown", 14)} Tu mamá paga al constructor. Resta de su disponible (${mxn(disp)}) y suma a lo pagado de la fase.</p>
+      <div class="form-grid">
+        <label class="field"><span>Fecha</span><input type="date" id="f-date" value="${hoy()}"></label>
+        <label class="field"><span>Monto (MXN)</span><input type="number" id="f-monto" min="0" step="0.01" placeholder="0"></label>
+        <label class="field col-2"><span>Fase</span><select id="f-fase">${faseOptions(faseSel)}</select></label>
+        <label class="field"><span>Concepto</span><input type="text" id="f-concepto" value="Pago a obra"></label>
+        <label class="field"><span>Notas (opcional)</span><input type="text" id="f-notas" placeholder="..."></label>
+      </div>`,
+    footer: btnGuardar(),
+  });
+  wireSave(m, onDone, () => {
+    const monto = num("f-monto");
+    if (!(monto > 0)) return toast("Captura un monto válido.", "err"), null;
+    if (monto > disp + 0.01)
+      return toast(`No hay suficiente disponible (${mxn(disp)}).`, "err"), null;
+    return { date: v("f-date"), kind: "pago", fase: v("f-fase"), concepto: v("f-concepto") || "Pago a obra", monto, notas: v("f-notas") };
+  }, (mv) => `Tu mamá pagará <b>${mxn(mv.monto)}</b> a <b>${label(mv.fase)}</b>.`);
+}
+
+// ---------------------------------------------------------------------------
+//  REGALO / gasto distinto (regalo) — resta del disponible
+// ---------------------------------------------------------------------------
+export function formRegalo(onDone) {
+  const disp = store.cuentaMama().disponible;
+  const m = modal({
+    title: "Registrar otro gasto / regalo",
+    body: `
+      <p class="form-hint">${icon("gift", 14)} Dinero que tu mamá usó en algo distinto a la obra. Resta de su disponible (${mxn(disp)}).</p>
+      <div class="form-grid">
+        <label class="field"><span>Fecha</span><input type="date" id="f-date" value="${hoy()}"></label>
+        <label class="field"><span>Monto (MXN)</span><input type="number" id="f-monto" min="0" step="0.01" placeholder="0"></label>
+        <label class="field col-2"><span>Concepto</span><input type="text" id="f-concepto" value="Regalo"></label>
+        <label class="field col-2"><span>Notas (opcional)</span><input type="text" id="f-notas" placeholder="..."></label>
+      </div>`,
+    footer: btnGuardar(),
+  });
+  wireSave(m, onDone, () => {
+    const monto = num("f-monto");
+    if (!(monto > 0)) return toast("Captura un monto válido.", "err"), null;
+    return { date: v("f-date"), kind: "regalo", concepto: v("f-concepto") || "Regalo", monto, notas: v("f-notas") };
+  }, (mv) => `Vas a registrar un gasto de <b>${mxn(mv.monto)}</b> fuera de la obra.`);
+}
+
+// ---------------------------------------------------------------------------
+//  APORTE a fondo (GBM / Gimnasio)
+// ---------------------------------------------------------------------------
+export function formAporte(onDone, fund = "gbm") {
+  const nombre = fund === "gbm" ? "GBM" : "Gimnasio";
+  const m = modal({
+    title: `Aportar a ${nombre}`,
+    body: `
+      <p class="form-hint">${icon("trending", 14)} Aportación al fondo ${nombre}.</p>
+      <div class="form-grid">
+        <label class="field"><span>Monto (MXN)</span><input type="number" id="f-monto" min="0" step="0.01" placeholder="0"></label>
+        <label class="field"><span>Notas (opcional)</span><input type="text" id="f-notas" placeholder="..."></label>
+      </div>`,
+    footer: btnGuardar(),
+  });
+  m.el.querySelector("[data-save]").onclick = async () => {
+    const monto = num("f-monto");
+    if (!(monto > 0)) return toast("Captura un monto válido.", "err");
+    m.close();
+    const ok = await confirmar({ title: "Confirmar aportación", message: `Aportarás <b>${mxn(monto)}</b> a ${nombre}.`, ok: "Guardar" });
     if (!ok) return;
-    await store.addMovement(mv);
-    toast("Movimiento registrado.");
-    onDone && onDone();
+    await store.addToFund(fund, monto, v("f-notas"));
+    toast("Aportación registrada.");
+    onDone?.();
   };
 }
 
-// --- Nuevo envío USD → MXN ---------------------------------------------------
-export function openEnvioForm(onDone) {
-  const rate = getRate();
-  const { close } = openModal({
-    title: "Registrar envío USD → MXN",
-    body: `
-      <form id="env-form" class="form-grid">
-        <label class="field"><span>Fecha</span>
-          <input type="date" id="env-date" value="${todayISO()}" required></label>
-        <label class="field"><span>Monto enviado (USD)</span>
-          <input type="number" id="env-usd" min="0" step="0.01" placeholder="0.00" required></label>
-        <label class="field"><span>Tipo de cambio</span>
-          <input type="number" id="env-rate" min="0" step="0.0001" value="${rate.toFixed(4)}"></label>
-        <label class="field"><span>Recibido (MXN)</span>
-          <input type="number" id="env-mxn" min="0" step="0.01" placeholder="auto" readonly></label>
-        <label class="field"><span>Plataforma</span>
-          <select id="env-platform">${opt(PLATFORM_OPTIONS, "Felix Pago")}</select></label>
-        <label class="field"><span>Fondo destino</span>
-          <select id="env-fund">${opt(FUND_OPTIONS, "casa_fase2")}</select></label>
-        <label class="field field-full"><span>Notas (opcional)</span>
-          <input type="text" id="env-notes" placeholder="Detalle..."></label>
-      </form>`,
-    actions: `
-      <button class="btn btn-ghost" data-cancel>Cancelar</button>
-      <button class="btn btn-primary" data-save>Guardar envío</button>`,
+// ---------------------------------------------------------------------------
+//  Editar presupuesto de fase (placeholders fase 0 / fase 3)
+// ---------------------------------------------------------------------------
+export function formPresupuesto(faseId, faseNombre, onDone) {
+  const actual = store.budget(faseId);
+  const m = modal({
+    title: `Presupuesto · ${faseNombre}`,
+    body: `<div class="form-grid"><label class="field col-2"><span>Presupuesto total (MXN)</span>
+      <input type="number" id="f-monto" min="0" step="0.01" value="${actual ?? ""}" placeholder="0"></label></div>`,
+    footer: btnGuardar("Guardar presupuesto"),
   });
-
-  const recalc = () => {
-    const usd = parseFloat(val("env-usd")) || 0;
-    const r = parseFloat(val("env-rate")) || 0;
-    document.getElementById("env-mxn").value = (usd * r).toFixed(2);
-  };
-  document.getElementById("env-usd").oninput = recalc;
-  document.getElementById("env-rate").oninput = recalc;
-
-  document.querySelector("[data-cancel]").onclick = close;
-  document.querySelector("[data-save]").onclick = async () => {
-    const usd = parseFloat(val("env-usd"));
-    const r = parseFloat(val("env-rate"));
-    if (!(usd > 0) || !(r > 0)) {
-      toast("Captura un monto USD y tipo de cambio válidos.", "error");
-      return;
-    }
-    const env = {
-      date: val("env-date"),
-      usd,
-      rate: r,
-      mxn: usd * r,
-      platform: val("env-platform"),
-      fund: val("env-fund"),
-      notes: val("env-notes"),
-    };
-    close();
-    const ok = await confirmDialog({
-      title: "Confirmar envío",
-      message: `Enviaste <strong>${fmtUSD(usd, true)}</strong> a un tipo de cambio de
-        <strong>${r.toFixed(4)}</strong> = <strong>${fmtMXN(env.mxn)}</strong>.
-        Este registro no podrá editarse.`,
-      confirmLabel: "Guardar envío",
-    });
-    if (!ok) return;
-    await store.addEnvio(env);
-    toast("Envío registrado.");
-    onDone && onDone();
-  };
-}
-
-// --- Editar saldo Nu ---------------------------------------------------------
-export function openNuForm(onDone) {
-  const nu = store.getNu();
-  const { close } = openModal({
-    title: "Actualizar saldo Nu",
-    body: `
-      <form class="form-grid">
-        <label class="field field-full"><span>Saldo actual en Nu (MXN)</span>
-          <input type="number" id="nu-balance" min="0" step="0.01" value="${nu.balance}"></label>
-        <label class="field field-full"><span>Nota (opcional)</span>
-          <input type="text" id="nu-note" placeholder="Motivo del ajuste..."></label>
-      </form>`,
-    actions: `
-      <button class="btn btn-ghost" data-cancel>Cancelar</button>
-      <button class="btn btn-primary" data-save>Guardar</button>`,
-  });
-  document.querySelector("[data-cancel]").onclick = close;
-  document.querySelector("[data-save]").onclick = async () => {
-    await store.setNu(parseFloat(val("nu-balance")) || 0, val("nu-note"));
-    close();
-    toast("Saldo Nu actualizado.");
-    onDone && onDone();
-  };
-}
-
-// --- Editar presupuesto de fase (placeholders fase 0 / fase 3) ---------------
-export function openPhaseBudgetForm(phaseId, phaseName, onDone) {
-  const current = store.getPhaseBudget(phaseId);
-  const { close } = openModal({
-    title: `Definir presupuesto · ${phaseName}`,
-    body: `
-      <form class="form-grid">
-        <label class="field field-full"><span>Presupuesto total (MXN)</span>
-          <input type="number" id="ph-budget" min="0" step="0.01" value="${current ?? ""}" placeholder="0.00"></label>
-        <p class="hint">Captura el dato real cuando lo tengas confirmado.</p>
-      </form>`,
-    actions: `
-      <button class="btn btn-ghost" data-cancel>Cancelar</button>
-      <button class="btn btn-primary" data-save>Guardar</button>`,
-  });
-  document.querySelector("[data-cancel]").onclick = close;
-  document.querySelector("[data-save]").onclick = async () => {
-    await store.setPhaseBudget(phaseId, parseFloat(val("ph-budget")) || 0);
-    close();
+  m.el.querySelector("[data-save]").onclick = async () => {
+    await store.setBudget(faseId, num("f-monto"));
+    m.close();
     toast("Presupuesto actualizado.");
-    onDone && onDone();
+    onDone?.();
   };
 }
 
-function val(id) {
-  return document.getElementById(id).value.trim();
+// ---------------------------------------------------------------------------
+//  Borrar un movimiento nuevo (los históricos no se pueden borrar)
+// ---------------------------------------------------------------------------
+export async function borrarMovimiento(id, onDone) {
+  const ok = await confirmar({
+    title: "Borrar movimiento",
+    message: "¿Seguro que quieres borrar este registro? Esta acción no se puede deshacer.",
+    ok: "Borrar",
+    danger: true,
+  });
+  if (!ok) return;
+  await store.deleteMove(id);
+  toast("Movimiento borrado.");
+  onDone?.();
+}
+
+// --- Helpers compartidos -----------------------------------------------------
+function btnGuardar(text = "Guardar") {
+  return `<button class="btn ghost" data-close>Cancelar</button>
+          <button class="btn primary" data-save>${text}</button>`;
+}
+
+function wireSave(m, onDone, build, mensaje) {
+  m.el.querySelector("[data-save]").onclick = async () => {
+    const mv = build();
+    if (!mv) return;
+    m.close();
+    const ok = await confirmar({ title: "Confirmar", message: mensaje(mv) + " Podrás borrarlo después si te equivocas.", ok: "Guardar" });
+    if (!ok) return;
+    await store.addMove(mv);
+    toast("Registrado correctamente.");
+    onDone?.();
+  };
 }

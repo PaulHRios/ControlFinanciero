@@ -1,70 +1,57 @@
 // ============================================================================
 //  AUTENTICACIÓN
 // ----------------------------------------------------------------------------
-//  Doble capa:
-//   1) Frontend: combina usuario + contraseña en un hash SHA-256 y lo compara
-//      con el hash guardado en config.js. Ni el usuario ni la contraseña se
-//      guardan en claro ni son recuperables desde el código.
-//   2) Backend (Apps Script): valida el mismo hash en cada request.
-//
-//  La sesión vive en sessionStorage → expira al cerrar el navegador.
+//  El login combina usuario + contraseña en un hash SHA-256 y lo compara con
+//  el hash de config.js. Ni el usuario ni la contraseña se guardan en claro.
+//  La sesión vive en sessionStorage → se cierra al cerrar el navegador.
 // ============================================================================
 import { CONFIG } from "./config.js";
-import { hashCredential } from "./crypto.js";
-import { icon } from "./icons.js";
+import { icon } from "./ui.js";
 
-const SESSION_KEY = "cc_auth_token";
+const KEY = "cc_token";
 
-export function isAuthenticated() {
-  return sessionStorage.getItem(SESSION_KEY) === CONFIG.auth.passwordHash;
+async function sha256(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+const hashCred = (salt, user, pass) => sha256(`${salt}:${user}:${pass}`);
 
-export function logout() {
-  sessionStorage.removeItem(SESSION_KEY);
+export const estaAutenticado = () => sessionStorage.getItem(KEY) === CONFIG.auth.passwordHash;
+
+export function salir() {
+  sessionStorage.removeItem(KEY);
   location.reload();
 }
 
-/** Renderiza la pantalla de login y resuelve cuando el acceso es válido. */
-export function renderLogin(onSuccess) {
+export function renderLogin(onOk) {
   const root = document.getElementById("app");
   root.innerHTML = `
-    <div class="login-screen">
-      <form class="login-card" id="login-form" autocomplete="off">
-        <div class="login-badge">${icon("lock", 26)}</div>
+    <div class="login">
+      <form class="login-card" id="lf" autocomplete="off">
+        <div class="login-ic">${icon("lock", 24)}</div>
         <h1>${CONFIG.app.name}</h1>
-        <p class="login-sub">${CONFIG.app.subtitle}</p>
-        <label class="field">
-          <span>${icon("user", 16)} Usuario</span>
-          <input type="text" id="login-user" autocapitalize="none" autocomplete="off" required />
-        </label>
-        <label class="field">
-          <span>${icon("lock", 16)} Contraseña</span>
-          <input type="password" id="login-pass" placeholder="••••••••" required />
-        </label>
-        <button type="submit" class="btn btn-primary btn-block">Entrar</button>
-        <p class="login-error" id="login-error" hidden>Usuario o contraseña incorrectos.</p>
+        <p class="sub">${CONFIG.app.subtitle}</p>
+        <label class="field"><span>${icon("user", 15)} Usuario</span>
+          <input type="text" id="lu" autocapitalize="none" autocomplete="off" required></label>
+        <label class="field"><span>${icon("lock", 15)} Contraseña</span>
+          <input type="password" id="lp" required></label>
+        <button class="btn primary block" type="submit">Entrar</button>
+        <p class="login-err" id="le" hidden>Usuario o contraseña incorrectos.</p>
       </form>
       <p class="login-foot">Acceso privado · Paúl & familia</p>
     </div>`;
 
-  const form = document.getElementById("login-form");
-  const errEl = document.getElementById("login-error");
+  const form = document.getElementById("lf");
   form.onsubmit = async (e) => {
     e.preventDefault();
-    errEl.hidden = true;
-    const user = document.getElementById("login-user").value.trim();
-    const pass = document.getElementById("login-pass").value;
-    // El usuario va dentro del hash: una credencial incorrecta produce un hash
-    // distinto y se rechaza. No se compara el usuario en claro.
-    const hash = await hashCredential(CONFIG.auth.salt, user, pass);
-
+    const hash = await hashCred(CONFIG.auth.salt, document.getElementById("lu").value.trim(), document.getElementById("lp").value);
     if (hash === CONFIG.auth.passwordHash) {
-      sessionStorage.setItem(SESSION_KEY, hash);
-      onSuccess();
+      sessionStorage.setItem(KEY, hash);
+      onOk();
     } else {
-      errEl.hidden = false;
+      document.getElementById("le").hidden = false;
       form.classList.remove("shake");
-      void form.offsetWidth; // reinicia la animación
+      void form.offsetWidth;
       form.classList.add("shake");
     }
   };

@@ -1,32 +1,50 @@
 # 🏠 Casa Cuauhtémoc — Control Financiero
 
 Dashboard financiero privado para trackear la inversión en la construcción de
-la casa en Cuauhtémoc, Chihuahua, más los fondos de GBM, gimnasio/bodega y la
-cuenta Nu (buffer de envíos USD → MXN).
+la casa en Cuauhtémoc, Chihuahua, más los fondos de GBM y gimnasio/bodega.
 
 Pensado para dos usuarios: **Paúl** (desde Colorado) y su **mamá** (desde
-Cuauhtémoc). Ambos ven los mismos números y pueden registrar pagos y envíos.
+Cuauhtémoc). Ambos ven los mismos números y pueden registrar movimientos.
 
 App estática (HTML + CSS + JavaScript con módulos ES). Sin build, sin
 dependencias externas de JS. Lista para **GitHub Pages**.
 
 ---
 
+## 💡 Cómo funciona el dinero (modelo claro)
+
+El dinero sigue un flujo simple, con cuatro tipos de movimiento:
+
+| Tipo | Qué es | Efecto |
+|------|--------|--------|
+| **Envío** | Paúl manda dinero a la cuenta de mamá | **+** disponible de mamá |
+| **Pago a obra** | Mamá paga al constructor (una fase) | **−** disponible · **+** pagado de la fase |
+| **Otro gasto** | Mamá usa dinero fuera de la obra | **−** disponible |
+| **Aportación** | Paúl aporta a GBM o Gimnasio | **+** saldo del fondo |
+
+Así queda siempre claro **cuánto le queda disponible a mamá** (lo recibido
+menos lo que ya pagó/gastó) y **cuánto falta por pagar** en cada fase. Ella
+puede registrar un pago y el disponible baja automáticamente.
+
+> Ejemplo real: Paúl envió $351,245 para la Fase 2; mamá pagó $100,000 de
+> anticipo y regaló $1,600 → le quedan **$249,645 disponibles** para seguir
+> pagando la obra.
+
+---
+
 ## ✨ Funciones
 
-- **Login con usuario y contraseña** (la contraseña nunca se guarda en claro:
-  solo un hash SHA-256 con salt).
-- **6 pestañas**: Dashboard, Casa, GBM, Gimnasio, Nu & Envíos, Historial.
-- **Estimador de tiempo**: calcula cuándo se terminan Fase 3 → Gimnasio → GBM,
-  en serie, según el promedio mensual de envíos. Se recalcula con cada registro.
-- **Datos históricos inmutables** de Fase 1 y Fase 2 (no editables).
+- **Login con usuario y contraseña** (nunca en claro: solo un hash SHA-256 con salt).
+- **5 pestañas**: Inicio, Casa, GBM, Gimnasio, Historial.
+- **Cuenta de mamá**: recibido, pagado, otros gastos y **disponible** en vivo.
+- **Por fase**: pagado vs presupuesto y **cuánto falta por pagar**.
+- **Registrar y borrar** movimientos nuevos (el historial real es inmutable).
+- **Estimador de tiempo**: cuándo se terminan Fase 3 → Gimnasio → GBM, en serie.
 - **Tipo de cambio USD/MXN** en vivo (frankfurter.app) con respaldo manual.
-- **Proyección GBM** con interés compuesto al 7% y gráfica SVG.
+- **Proyección GBM** con interés compuesto al 7% y gráfica.
 - **Exportar a CSV** del historial completo.
-- **Diseño dark mode**, responsivo (tab bar inferior en móvil, sidebar en
-  desktop), con skeleton loaders, toasts y micro-interacciones.
-- **Backend opcional con Google Sheets** para que los datos se compartan en
-  tiempo real entre Colorado y Cuauhtémoc.
+- **Diseño dark mode**, responsivo (tab bar inferior en móvil, sidebar en desktop).
+- **Backend opcional con Google Sheets** para compartir datos en tiempo real.
 
 > Sin Google Sheets configurado, la app funciona perfecto guardando los datos
 > en el navegador (localStorage) de cada dispositivo.
@@ -66,7 +84,7 @@ Settings → Pages → Source: *Deploy from a branch* → rama
 Para que Paúl y su mamá compartan los mismos datos, sigue
 [`apps-script/SETUP.md`](apps-script/SETUP.md). Resumen:
 
-1. Crea un Google Sheet con 4 hojas: `Movimientos`, `Envios`, `Fondos`, `Config`.
+1. Crea un Google Sheet con 2 hojas: `Movimientos` y `Config`.
 2. Extensiones → Apps Script → pega `apps-script/Code.gs`.
 3. En *Project Settings → Script properties* agrega `AUTH_HASH` con el mismo
    hash que `js/config.js`.
@@ -83,17 +101,15 @@ generar-hash.html       · utilidad para generar el hash de la contraseña
 css/styles.css          · estilos (dark mode, responsivo)
 js/
   config.js             · configuración (credenciales hash, metas, URLs)
-  app.js                · bootstrap + navegación
+  app.js                · bootstrap, navegación y menú de "+"
   auth.js               · login y sesión
-  crypto.js             · hashing SHA-256
-  store.js              · capa de datos (localStorage + Sheets)
-  compute.js            · cálculos financieros y estimador
-  views.js              · render de las 6 pestañas
-  forms.js              · formularios (movimiento, envío, Nu, presupuesto)
-  charts.js             · gráficas SVG
+  data.js               · fases + historial real inmutable (Fase 1 y 2)
+  store.js              · almacenamiento (localStorage + Sheets) y cálculos
+  views.js              · render de las 5 pestañas
+  forms.js              · formularios (envío, pago, gasto, aporte, presupuesto)
+  ui.js                 · iconos, toasts y modales
   fx.js                 · tipo de cambio USD/MXN
-  funds.js · format.js · icons.js · ui.js   · utilidades
-data/historical.js      · datos históricos inmutables (Fase 1 y 2)
+  format.js             · formateo de dinero, fechas y duraciones
 apps-script/Code.gs     · backend Google Apps Script
 apps-script/SETUP.md    · guía paso a paso de Google Sheets
 ```

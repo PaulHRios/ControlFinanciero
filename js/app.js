@@ -1,120 +1,134 @@
 // ============================================================================
-//  APP — bootstrap, navegación y enrutamiento
+//  APP — bootstrap, navegación y menú de "+"
 // ============================================================================
 import { CONFIG } from "./config.js";
-import { store } from "./store.js";
+import { initStore, isCloud, storageWorks } from "./store.js";
 import { loadRate } from "./fx.js";
-import { isAuthenticated, renderLogin, logout } from "./auth.js";
-import { renderView } from "./views.js";
-import { icon } from "./icons.js";
-import { skeleton } from "./ui.js";
-import { openMovementForm } from "./forms.js";
+import { estaAutenticado, renderLogin, salir } from "./auth.js";
+import { render } from "./views.js";
+import { icon, modal } from "./ui.js";
+import { formEnvio, formPago, formRegalo, formAporte } from "./forms.js";
 
 const TABS = [
-  { id: "dashboard", label: "Inicio", ic: "dashboard" },
+  { id: "inicio", label: "Inicio", ic: "home" },
   { id: "casa", label: "Casa", ic: "home" },
   { id: "gbm", label: "GBM", ic: "trending" },
   { id: "gym", label: "Gimnasio", ic: "dumbbell" },
-  { id: "nu", label: "Nu & Envíos", ic: "send" },
   { id: "historial", label: "Historial", ic: "list" },
 ];
 
-let currentTab = "dashboard";
+let tab = "inicio";
 
 const app = {
-  navigate(tab) {
-    currentTab = tab;
-    location.hash = tab;
-    renderActive();
-    highlightNav();
+  go(t) {
+    tab = t;
+    location.hash = t;
+    paint();
+    marca();
   },
   refresh() {
-    renderActive();
+    paint();
   },
 };
 
-function renderActive() {
+function paint() {
   const root = document.getElementById("view-root");
-  if (root) renderView(currentTab, root, app);
+  if (root) render(tab, root, app);
 }
 
-function highlightNav() {
-  document.querySelectorAll("[data-tab]").forEach((el) => {
-    el.classList.toggle("active", el.getAttribute("data-tab") === currentTab);
+function marca() {
+  document.querySelectorAll("[data-tab]").forEach((el) =>
+    el.classList.toggle("active", el.dataset.tab === tab)
+  );
+}
+
+// Menú del botón "+": elige qué registrar
+function menuAgregar() {
+  const m = modal({
+    title: "¿Qué quieres registrar?",
+    body: `<div class="menu-add">
+      <button class="add-opt" data-o="envio"><span class="add-ic in">${icon("arrowUp", 18)}</span>
+        <span><b>Envío a mamá</b><small>Mandas dinero a su cuenta</small></span></button>
+      <button class="add-opt" data-o="pago"><span class="add-ic out">${icon("arrowDown", 18)}</span>
+        <span><b>Pago a la obra</b><small>Mamá paga al constructor</small></span></button>
+      <button class="add-opt" data-o="regalo"><span class="add-ic out">${icon("gift", 18)}</span>
+        <span><b>Otro gasto</b><small>Dinero usado fuera de la obra</small></span></button>
+      <button class="add-opt" data-o="gbm"><span class="add-ic in">${icon("trending", 18)}</span>
+        <span><b>Aportar a GBM</b><small>Fondo de inversión</small></span></button>
+      <button class="add-opt" data-o="gym"><span class="add-ic in">${icon("dumbbell", 18)}</span>
+        <span><b>Aportar a Gimnasio</b><small>Fondo del gym/bodega</small></span></button>
+    </div>`,
+  });
+  const open = (fn, ...a) => {
+    m.close();
+    setTimeout(() => fn(app.refresh, ...a), 210);
+  };
+  m.el.querySelectorAll("[data-o]").forEach((b) => {
+    b.onclick = () => {
+      const o = b.dataset.o;
+      if (o === "envio") open(formEnvio);
+      else if (o === "pago") open(formPago);
+      else if (o === "regalo") open(formRegalo);
+      else if (o === "gbm") open(formAporte, "gbm");
+      else if (o === "gym") open(formAporte, "gym");
+    };
   });
 }
 
-function renderShell() {
+function shell() {
   const root = document.getElementById("app");
-  const navItems = (cls) =>
-    TABS.map(
-      (t) =>
-        `<button class="${cls}" data-tab="${t.id}">${icon(t.ic, 20)}<span>${t.label}</span></button>`
-    ).join("");
+  const items = (cls) =>
+    TABS.map((t) => `<button class="${cls}" data-tab="${t.id}">${icon(t.ic, 20)}<span>${t.label}</span></button>`).join("");
+  const sync = isCloud()
+    ? `<span class="dot ok"></span> Sincronizado (Sheets)`
+    : storageWorks()
+    ? `<span class="dot ok"></span> Guardado en este dispositivo`
+    : `<span class="dot warn"></span> Sin almacenamiento disponible`;
 
   root.innerHTML = `
     <div class="layout">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">${icon("home", 20)}</div>
-          <div><div class="brand-name">${CONFIG.app.name}</div>
-            <div class="brand-sub">${CONFIG.app.subtitle}</div></div>
-        </div>
-        <nav class="nav">${navItems("nav-item")}</nav>
-        <div class="sidebar-foot">
-          ${store.isCloudEnabled() ? `<span class="sync-dot ok"></span> Sincronizado (Sheets)` : `<span class="sync-dot"></span> Local (este dispositivo)`}
-          <button class="btn btn-ghost btn-block" id="logout-btn">${icon("logout", 16)} Cerrar sesión</button>
-        </div>
+      <aside class="side">
+        <div class="brand"><div class="brand-ic">${icon("home", 18)}</div>
+          <div><div class="brand-name">${CONFIG.app.name}</div><div class="brand-sub">${CONFIG.app.subtitle}</div></div></div>
+        <nav class="nav">${items("nav-item")}</nav>
+        <div class="side-foot"><div class="sync">${sync}</div>
+          <button class="btn ghost block" id="logout">${icon("logout", 16)} Cerrar sesión</button></div>
       </aside>
 
       <main class="main">
         <header class="topbar">
-          <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Menú">${icon("dashboard", 20)}</button>
-          <div class="topbar-title" id="topbar-title">${CONFIG.app.name}</div>
-          <button class="btn btn-primary btn-sm" id="fab-add">${icon("plus", 16)}<span class="hide-sm">Movimiento</span></button>
+          <button class="ghost-icon menu-tg" id="menu-tg">${icon("list", 20)}</button>
+          <span class="topbar-title">${CONFIG.app.name}</span>
+          <button class="btn primary sm" id="add">${icon("plus", 16)}<span class="hide-xs">Agregar</span></button>
         </header>
-        <div id="view-root" class="view-root">${skeleton(4)}</div>
+        <div id="view-root" class="view-root"></div>
       </main>
 
-      <nav class="tabbar">${navItems("tabbar-item")}</nav>
+      <nav class="tabbar">${items("tab-item")}</nav>
     </div>
     <div id="toasts" class="toasts"></div>
     <div id="modal-host"></div>`;
 
-  // Navegación
-  root.querySelectorAll("[data-tab]").forEach((el) => {
-    el.onclick = () => app.navigate(el.getAttribute("data-tab"));
-  });
-  document.getElementById("logout-btn").onclick = logout;
-  document.getElementById("fab-add").onclick = () => openMovementForm(app.refresh);
-  document.getElementById("menu-toggle").onclick = () =>
-    document.querySelector(".sidebar").classList.toggle("open");
+  root.querySelectorAll("[data-tab]").forEach((el) => (el.onclick = () => app.go(el.dataset.tab)));
+  document.getElementById("logout").onclick = salir;
+  document.getElementById("add").onclick = menuAgregar;
+  document.getElementById("menu-tg").onclick = () => document.querySelector(".side").classList.toggle("open");
 }
 
 async function boot() {
-  if (!isAuthenticated()) {
-    renderLogin(boot);
-    return;
-  }
-
-  renderShell();
-
-  // Tab inicial desde el hash
-  const hashTab = location.hash.replace("#", "");
-  if (TABS.some((t) => t.id === hashTab)) currentTab = hashTab;
-
-  // Carga de datos y tipo de cambio en paralelo
-  await Promise.all([store.init(), loadRate()]);
-
-  renderActive();
-  highlightNav();
-
+  if (!estaAutenticado()) return renderLogin(boot);
+  shell();
+  const h = location.hash.replace("#", "");
+  if (TABS.some((t) => t.id === h)) tab = h;
+  await Promise.all([initStore(), loadRate()]);
+  paint();
+  marca();
   window.addEventListener("hashchange", () => {
     const t = location.hash.replace("#", "");
-    if (TABS.some((x) => x.id === t) && t !== currentTab) {
-      currentTab = t;
-      renderActive();
-      highlightNav();
+    if (TABS.some((x) => x.id === t) && t !== tab) {
+      tab = t;
+      paint();
+      marca();
     }
   });
 }
